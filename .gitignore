@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local API captures (contain live session cookies)
+apipass*.md
+aipass*.md
+*.har

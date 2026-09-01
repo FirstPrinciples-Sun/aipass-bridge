@@ -3,7 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node aipass-bridge/bridge/server.mjs",
+    "test": "node --test aipass-bridge/test/*.test.mjs",
+    "chat": "node aipass-bridge/chat.mjs",
+    "agent": "node aipass-bridge/agent.mjs",
+    "models": "node aipass-bridge/list.mjs models",
+    "conversations": "node aipass-bridge/list.mjs conversations",
+    "dev:next": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
