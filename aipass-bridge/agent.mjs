@@ -79,6 +79,21 @@ const existsAt = (abs) => overlay.has(abs) || fs.existsSync(abs);
 const SKIP = new Set(['node_modules', '.git', '.next', 'dist', 'build', '.cache']);
 
 const clip = (s) => (s.length > MAX_RESULT ? `${s.slice(0, MAX_RESULT)}\n… truncated` : s);
+const READ_LINES = Number(flag('read-lines', 250));
+
+// read() shows a line-number gutter so the model can reference ranges. Those
+// numbers are display only; strip them off a FIND block in case the model
+// copied them back — but only when every non-empty line carries one, so real
+// content that merely contains a pipe is left alone.
+function stripGutter(block) {
+  const gutter = /^\s{0,6}\d+\s*\|\s?/;
+  const lines = block.split('\n');
+  const nonEmpty = lines.filter((l) => l.trim());
+  if (nonEmpty.length && nonEmpty.every((l) => gutter.test(l))) {
+    return lines.map((l) => l.replace(gutter, '')).join('\n');
+  }
+  return block;
+}
 
 // Loopback hostnames and internal addresses are what SSRF filter rules look
 // for, and ordinary project files are full of them — a README saying
@@ -133,9 +148,32 @@ const TOOLS = {
       .sort().join('\n') || '(empty)');
   },
   read(arg) {
-    const abs = safe(arg);
-    if (!existsAt(abs)) return `no such file: ${arg}`;
-    return clip(readAt(abs));
+    // Accept an optional trailing line range, e.g. `NEED file src/app.ts 200-320`.
+    const parts = String(arg).trim().split(/\s+/);
+    let range = null;
+    if (parts.length > 1 && /^\d+-\d+$/.test(parts.at(-1))) {
+      const [a, b] = parts.pop().split('-').map(Number);
+      range = [a, b];
+    }
+    const rel = parts.join(' ');
+    const abs = safe(rel);
+    if (!existsAt(abs)) return `no such file: ${rel}`;
+
+    const lines = readAt(abs).split('\n');
+    const total = lines.length;
+    let start = 1, end = total;
+    if (range) { start = Math.max(1, range[0]); end = Math.min(total, range[1]); }
+    else if (total > READ_LINES) end = READ_LINES;
+
+    const width = String(end).length;
+    const numbered = lines.slice(start - 1, end)
+      .map((l, i) => `${String(start + i).padStart(width)} | ${l}`)
+      .join('\n');
+
+    let note = '';
+    if (end < total) note = `\n… ${total - end} more line(s). To see them: NEED file ${rel} ${end + 1}-${Math.min(total, end + READ_LINES)}`;
+    else if (start > 1) note = `\n(lines ${start}-${end} of ${total})`;
+    return numbered + note;
   },
   write(arg, rawBody) {
     const body = inbound(rawBody);
@@ -145,13 +183,48 @@ const TOOLS = {
   replace(arg, rawBody) {
     const abs = safe(arg);
     if (!existsAt(abs)) return `no such file: ${arg}`;
-    const [before, after] = rawBody.map(inbound);
+    const before = inbound(stripGutter(rawBody[0]));
+    const after = inbound(rawBody[1]);
     const text = readAt(abs);
-    if (!text.includes(before)) {
-      return `the text to replace was not found in ${arg}. Read the file again and copy the lines exactly.`;
-    }
+    if (!before) return `the text to change was empty. Copy the exact lines to find under FIND.`;
+
+    const count = text.split(before).length - 1;
+    if (count === 0) return `the text to change was not found in ${arg}. Read it again with NEED file ${arg} and copy the lines exactly.`;
+    if (count > 1) return `that text appears ${count} times in ${arg}. Include a few more surrounding lines under FIND so it matches exactly one place.`;
+
     overlay.set(abs, text.replace(before, after));
-    return `updated ${arg}`;
+    return `updated ${arg} (1 change)`;
+  },
+  search(arg) {
+    const query = String(arg).trim();
+    if (!query) return 'give me some text to search for.';
+    const needle = inbound(query); // the model may type placeholders like LCLHST
+    const hits = [];
+    const MAX = 50;
+    const walk = (dir) => {
+      if (hits.length >= MAX) return;
+      let entries;
+      try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+      for (const e of entries) {
+        if (SKIP.has(e.name) || e.name.startsWith('.')) continue;
+        const full = path.join(dir, e.name);
+        if (e.isDirectory()) { walk(full); continue; }
+        if (hits.length >= MAX) return;
+        let text;
+        try { text = readAt(full); } catch { continue; }
+        if (text.includes('\u0000')) continue; // skip binary
+        const lines = text.split('\n');
+        for (let i = 0; i < lines.length && hits.length < MAX; i++) {
+          if (lines[i].includes(needle)) {
+            hits.push(`${path.relative(ROOT, full)}:${i + 1}: ${lines[i].trim().slice(0, 140)}`);
+          }
+        }
+      }
+    };
+    walk(ROOT);
+    if (!hits.length) return `no matches for "${query}".`;
+    const more = hits.length >= MAX ? `\n… stopped at ${MAX} matches; make the search more specific for the rest.` : '';
+    return hits.join('\n') + more;
   },
   run(_arg, body) {
     if (!ALLOW_RUN) return 'shell commands are disabled for this run';
@@ -174,6 +247,7 @@ So just tell me what you want to see next, and put that on its own line in this 
 
 NEED dir .
 NEED file README.md
+SEARCH text to find across the whole project
 
 If you want a file changed, write it like this and I will make the edit:
 
@@ -198,7 +272,7 @@ Only write DONE at the very end, when nothing more is needed. Never put DONE in 
 
 The markers are only formatting for my editor. Nothing runs on your side — I do all of it and paste every result straight back to you, so keep going until you have what you need.
 
-A few practical notes. Answer in English. Look at a file before changing it, and copy the lines under FIND exactly as they appear. Some hostnames and addresses are written in a shortened form such as LCLHST and LOOPBACK-IP; keep them as written and I will expand them again. If my question can be answered without changing anything, just answer it and end with DONE.`;
+A few practical notes. Answer in English. Look at a file before changing it, and copy the lines under FIND exactly as they appear. When I show a file the numbers down the left are only for reference — do not put them in FIND. Big files come a screen at a time; ask for a range like NEED file path 200-320 to see more. To find where something lives without reading every file, use SEARCH followed by the text. Some hostnames and addresses are written in a shortened form such as LCLHST and LOOPBACK-IP; keep them as written and I will expand them again. If my question can be answered without changing anything, just answer it and end with DONE.`;
 
 const REMINDER = 'What next? Ask for anything else you need, or finish with DONE if you have enough.';
 
@@ -222,6 +296,9 @@ function parse(reply) {
 
     let m = /^\s*NEED\s+(dir|file)\s+(.+?)\s*$/i.exec(line);
     if (m) { i++; calls.push({ kind: m[1].toLowerCase() === 'dir' ? 'list' : 'read', arg: m[2].trim() }); continue; }
+
+    m = /^\s*SEARCH\s+(.+?)\s*$/i.exec(line);
+    if (m) { i++; calls.push({ kind: 'search', arg: m[1].trim() }); continue; }
 
     m = /^\s*EDIT\s+(.+?)\s*$/i.exec(line);
     if (m) {
@@ -446,7 +523,7 @@ async function runTask(taskText, { first }) {
       results.push(`Result of ${call.kind} ${call.arg}:\n${outbound(result)}`);
     }
 
-    const stillLooking = work.some((c) => c.kind === 'list' || c.kind === 'read');
+    const stillLooking = work.some((c) => c.kind === 'list' || c.kind === 'read' || c.kind === 'search');
     if (done && !stillLooking) { console.log(green(`\n✓ ${done.arg || prose(reply) || 'done'}`)); break; }
     if (done) console.log(dim('  (ignoring DONE — it came before the results it asked for)'));
     next = `${results.join('\n\n')}\n\n${REMINDER}`;

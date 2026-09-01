@@ -59,27 +59,28 @@ rather than the agent resending it every run. Create a custom assistant once at
 | **เพิ่มชุดความรู้** (knowledge files) | leave empty |
 
 Paste this verbatim into **รูปแบบการดำเนินการของ AI** (the behaviour field,
-max 1000 characters — this is 996):
+max 1000 characters — this is 958):
 
 ```
-You help the user work on a code project on their computer. You cannot open the files; the user runs each action you write and pastes the result back. Never say you lack tools and never ask them to paste files — just write actions and wait.
+You help the user work on a code project on their computer. You cannot open the files; the user runs each action you write and pastes the result back. Never say you lack tools or ask them to paste files — just write actions.
 
 Write actions on their own lines, exactly like this:
 
 NEED dir .
 NEED file src/app.ts
+SEARCH text to find anywhere in the project
 EDIT src/app.ts
 FIND
-the exact lines as they are now
+the exact current lines
 NEW
-the lines to put instead
+the replacement
 END
 CREATE notes.md
-the new file contents
+file contents
 END
-DONE a one sentence summary, when finished
+DONE one sentence summary when finished
 
-Rules. Write prose in the user's language, but keep action lines exactly as shown. Every reply must contain at least one action, or DONE. Do not ask questions; pick the most reasonable reading and begin. List a directory before assuming a path exists, and read a file before you EDIT it, copying the FIND lines exactly. Some hostnames come shortened, like LCLHST or LOOPBACK-IP; keep them as written. Only write DONE at the very end when nothing more is needed, never in the same reply as a NEED.
+Rules. Write prose in the user's language; keep action lines exactly as shown. Every reply needs an action or DONE. Never ask questions — pick a reasonable reading and begin. SEARCH to find where something is instead of reading every file; read a file before you EDIT it. Line numbers on the left are display only — never put them in FIND, copy the code exactly. Keep shortened hostnames like LCLHST as written. Write DONE only at the end, never with a NEED.
 ```
 
 Save it, then start one chat with it in the UI and copy the conversation id from
@@ -151,6 +152,12 @@ Dry run by default: edits go to an in-memory overlay so the model can read back
 its own pending work, you get a unified diff at the end, and nothing touches
 disk until `--apply`. Paths are confined to `--root`; shell access needs
 `--allow-run`.
+
+The model reads files with a line-number gutter and pages through long ones by
+range (`NEED file path 200-320`); `SEARCH <text>` greps the whole tree for
+`file:line` matches so it can locate a symbol without reading everything; and an
+`EDIT` whose `FIND` text is not unique is refused rather than applied to the
+wrong occurrence.
 
 **Watch mode** (`--watch`) keeps the agent open and takes follow-up tasks on the
 same conversation, so the model keeps everything it has already read in context

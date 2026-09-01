@@ -323,3 +323,80 @@ test('--assistant binds the created conversation and implies slim', async (t) =>
   assert.ok(firstTask, 'a task message was sent');
   assert.doesNotMatch(firstTask.text, /you write the lines/i);
 });
+
+test('read shows line numbers and pages a long file with a range hint', async (t) => {
+  const body = Array.from({ length: 600 }, (_, i) => `line ${i + 1}`).join('\n') + '\n';
+  const dir = tempDir({ 'big.txt': body });
+  const handler = scripted(['NEED file big.txt', 'NEED file big.txt 300-305', 'DONE looked']);
+  const ext = await new FakeExtension(bridge.base, { onChat: handler }).connect();
+  t.after(() => ext.disconnect());
+
+  await agent(dir);
+  const firstResult = handler.sent[1];    // the result of the first read is in turn 2's message
+  assert.match(firstResult, /1 \| line 1/, 'line numbers present');
+  assert.match(firstResult, /more line\(s\)\. To see them: NEED file big\.txt 251-/, 'range hint present');
+  assert.doesNotMatch(firstResult, /line 300/, 'a long file is not dumped whole');
+
+  const rangeResult = handler.sent[2];     // the result of the ranged read
+  assert.match(rangeResult, /300 \| line 300/);
+  assert.match(rangeResult, /305 \| line 305/);
+  assert.doesNotMatch(rangeResult, /299 \| line 299/, 'range is respected');
+});
+
+test('edit refuses an ambiguous match instead of corrupting the wrong line', async (t) => {
+  const dir = tempDir({ 'code.js': 'const a = 1;\nfoo();\nconst a = 1;\n' });
+  const ext = await new FakeExtension(bridge.base, {
+    onChat: scripted(['EDIT code.js\nFIND\nconst a = 1;\nNEW\nconst a = 2;\nEND', 'DONE tried']),
+  }).connect();
+  t.after(() => ext.disconnect());
+
+  const { out } = await agent(dir, ['--apply']);
+  assert.match(out, /appears 2 times/);
+  assert.equal(fs.readFileSync(path.join(dir, 'code.js'), 'utf8'), 'const a = 1;\nfoo();\nconst a = 1;\n', 'nothing changed');
+});
+
+test('edit tolerates line-number gutters copied into FIND', async (t) => {
+  const dir = tempDir({ 'code.js': 'export function greet(name) {\n  return `hi ${name}`;\n}\n' });
+  const ext = await new FakeExtension(bridge.base, {
+    // the model copies the gutter it saw in read output straight into FIND
+    onChat: scripted(['EDIT code.js\nFIND\n  2 |   return `hi ${name}`;\nNEW\n  return `hello ${name}`;\nEND', 'DONE done'], {}),
+  }).connect();
+  t.after(() => ext.disconnect());
+
+  await agent(dir, ['--apply']);
+  assert.equal(
+    fs.readFileSync(path.join(dir, 'code.js'), 'utf8'),
+    'export function greet(name) {\n  return `hello ${name}`;\n}\n',
+  );
+});
+
+test('SEARCH finds matches across the tree as file:line: excerpt', async (t) => {
+  const dir = tempDir({
+    'src/a.ts': 'const x = 1;\nexport const useThing = () => x;\n',
+    'src/b.ts': 'import { useThing } from "./a";\nuseThing();\n',
+    'README.md': 'nothing relevant here\n',
+    'node_modules/pkg/index.js': 'useThing everywhere\n',   // must be skipped
+  });
+  const handler = scripted(['SEARCH useThing', 'DONE found them']);
+  const ext = await new FakeExtension(bridge.base, { onChat: handler }).connect();
+  t.after(() => ext.disconnect());
+
+  await agent(dir);
+  const result = handler.sent[1];   // the SEARCH result is in the next message
+  assert.match(result, /src\/a\.ts:2:/);
+  assert.match(result, /src\/b\.ts:1:/);
+  assert.match(result, /src\/b\.ts:2:/);
+  assert.doesNotMatch(result, /node_modules/, 'skipped dirs are not searched');
+  assert.doesNotMatch(result, /README/, 'non-matching files are not listed');
+});
+
+test('SEARCH reports cleanly when there are no matches', async (t) => {
+  const dir = tempDir({ 'a.txt': 'hello world\n' });
+  const handler = scripted(['SEARCH nonexistent_symbol', 'DONE none']);
+  const ext = await new FakeExtension(bridge.base, { onChat: handler }).connect();
+  t.after(() => ext.disconnect());
+
+  const { out } = await agent(dir);
+  assert.match(out, /✓ search/);
+  assert.match(handler.sent[1], /no matches for "nonexistent_symbol"/);
+});
