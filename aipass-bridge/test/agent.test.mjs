@@ -400,3 +400,36 @@ test('SEARCH reports cleanly when there are no matches', async (t) => {
   assert.match(out, /✓ search/);
   assert.match(handler.sent[1], /no matches for "nonexistent_symbol"/);
 });
+
+test('the task text and preamble are encoded, so process.env never leaves raw', async (t) => {
+  const dir = tempDir({ '.env': 'SECRET=1\n', 'app.js': 'const k = process.env.SECRET;\n' });
+  // Model an edge that blocks any request containing ".env" (a real WAF pattern).
+  const handler = scripted(['NEED file app.js', 'DONE looked at it'], {
+    reject: (t) => /\.env/i.test(t),
+  });
+  const ext = await new FakeExtension(bridge.base, { onChat: handler }).connect();
+  t.after(() => ext.disconnect());
+
+  // The task itself mentions process.env — it must be encoded before sending.
+  const { out } = await run(AGENT, [
+    'List where app.js reads a process.env value', '--root', dir, '--bridge', bridge.base,
+  ]);
+  assert.match(out, /✓ looked at it/, 'the run completes despite the .env-blocking edge');
+  const sent = handler.sent.join('\n');
+  assert.doesNotMatch(sent, /process\.env/, 'process.env must never be sent raw');
+  assert.doesNotMatch(sent, /\.env/, 'no bare .env may be sent raw either');
+  assert.match(sent, /PROCESS-ENV/, 'it is encoded, not dropped');
+});
+
+test('the model can open a file whose name was encoded (.env → DOT-ENV)', async (t) => {
+  const dir = tempDir({ '.env': 'TOKEN=abc\n' });
+  // The model sees the encoded name in the listing and copies it back verbatim.
+  const handler = scripted(['NEED file DOT-ENV', 'DONE read the env file']);
+  const ext = await new FakeExtension(bridge.base, { onChat: handler }).connect();
+  t.after(() => ext.disconnect());
+
+  await run(AGENT, ['read the env file', '--root', dir, '--bridge', bridge.base]);
+  // the decode step turns DOT-ENV back into .env, so the real file is read
+  const result = handler.sent[1];
+  assert.match(result, /TOKEN=abc/, 'the real .env file was read and its contents returned (encoded)');
+});

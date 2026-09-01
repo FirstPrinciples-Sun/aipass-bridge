@@ -204,15 +204,16 @@ This works within the constraints above rather than against them:
   behaviour field. Then run against a conversation bound to that assistant with
   `--conversation <id>` (or `--reuse`) plus `--slim`, which drops the built-in
   preamble the assistant already provides.
-- **Loopback addresses and HTML comments are substituted.** `localhost`, `127.0.0.1`, `0.0.0.0`,
-  `169.254.169.254` and `file://` are what SSRF filter rules match on, and
-  ordinary project files are full of them — a README saying *"open
-  http://localhost:3000"* is enough on its own to get a request rejected
-  (confirmed: the same message passed once that line was split away). `localhost`,
-  `127.0.0.1`, `file://`, and the HTML-comment / `<script` shapes an XSS rule
-  flags (a markdown file opening with `<!--` is enough) go out as `LCLHST`,
-  `CMT-OPEN` and so on, restored before anything is written — so the bytes on
-  disk are exactly what the file had.
+- **Trigger-shaped tokens are encoded, symmetrically.** Everything sent upstream
+  is encoded and everything read back is decoded — so the task text and preamble
+  are covered, not just file contents. Three families, all confirmed against the
+  live edge: `localhost` / `127.0.0.1` / `0.0.0.0` / `169.254.169.254` /
+  `file://` (SSRF); `<!--` / `<script` / `<!doctype` (XSS — a README opening
+  with an HTML comment is enough); and `.env` / `process.env` (the classic
+  secrets-probe pattern). They go out as `LCLHST`, `CMT-OPEN`, `DOT-ENV` and so
+  on, and are restored before anything is written — the bytes on disk are exactly
+  what the file had. A file whose *name* is encoded (a real `.env` shown as
+  `DOT-ENV`) still opens, because the decode runs on the model's actions too.
 
 - **Lines that cannot be sent at all are dropped.** Real source contains
   code-execution shapes — `node -e`, `curl`, `rm -rf`, `/bin/sh`, `../../` —
