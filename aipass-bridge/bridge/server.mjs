@@ -22,6 +22,11 @@ const IDLE_TIMEOUT_MS = Number(process.env.AIPASS_IDLE_TIMEOUT_MS ?? 180_000);
 const MAX_BODY = 8 * 1024 * 1024;
 
 let defaultModel = process.env.AIPASS_MODEL ?? 'gemini-3.1-flash-lite';
+// Bind newly created conversations to a custom aipass assistant. The form field
+// name is not yet confirmed from a capture, so it is configurable; the default
+// is the most likely candidate and is harmless if the server ignores it.
+let assistantId = process.env.AIPASS_ASSISTANT_ID ?? '';
+const ASSISTANT_FIELD = process.env.AIPASS_ASSISTANT_FIELD ?? 'aiAssistantId';
 
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
@@ -103,12 +108,14 @@ const sendToClient = (client, event, data) =>
   client.res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 
 class Job {
-  constructor({ kind = 'chat', modelId, text, conversationId, url, message, requestId, timeoutMs, onDelta, onDone, onError }) {
+  constructor({ kind = 'chat', modelId, text, conversationId, url, message, requestId, assistant, assistantField, timeoutMs, onDelta, onDone, onError }) {
     this.id = randomUUID();
     this.kind = kind;
     this.url = url;
     this.message = message;
     this.requestId = requestId;
+    this.assistant = assistant;
+    this.assistantField = assistantField;
     this.timeoutMs = timeoutMs ?? IDLE_TIMEOUT_MS;
     this.modelId = modelId;
     this.text = text;
@@ -131,7 +138,7 @@ class Job {
     sendToClient(client, 'job', this.kind === 'loader'
       ? { jobId: this.id, kind: 'loader', url: this.url }
       : this.kind === 'create'
-      ? { jobId: this.id, kind: 'create', modelId: this.modelId, message: this.message, requestId: this.requestId }
+      ? { jobId: this.id, kind: 'create', modelId: this.modelId, message: this.message, requestId: this.requestId, assistant: this.assistant, assistantField: this.assistantField }
       : { jobId: this.id, kind: 'chat', conversationId: this.conversationId, modelId: this.modelId, text: this.text });
   }
   delta(part) { if (!this.settled) { this.touch(); this.onDelta(part); } }
@@ -221,11 +228,13 @@ function findValue(node, key) {
 
 // The chat page creates a conversation by posting its first message to
 // /chat.data; the server derives the id from clientCreateRequestId.
-async function createConversation({ modelId = defaultModel, message = 'Hello' } = {}) {
+async function createConversation({ modelId = defaultModel, message = 'Hello', assistant } = {}) {
   const requestId = randomUUID();
   const raw = await new Promise((resolve, reject) => {
     const job = new Job({
-      kind: 'create', modelId, message, requestId, timeoutMs: 30_000,
+      kind: 'create', modelId, message, requestId,
+      assistant: assistant ?? assistantId, assistantField: ASSISTANT_FIELD,
+      timeoutMs: 30_000,
       onDelta: () => {}, onDone: resolve, onError: (m) => reject(new Error(m)),
     });
     job.dispatch();
@@ -498,7 +507,7 @@ const server = http.createServer(async (req, res) => {
 
     if (path === '/conversations/new' && req.method === 'POST') {
       const body = JSON.parse(await readBody(req) || '{}');
-      const id = await createConversation({ modelId: body.model, message: body.message });
+      const id = await createConversation({ modelId: body.model, message: body.message, assistant: body.assistant });
       return json(res, 200, { id });
     }
     if (path === '/conversations') {
@@ -515,13 +524,14 @@ const server = http.createServer(async (req, res) => {
         defaultModel = body.defaultModel.trim();
         log(`default model ${defaultModel}`);
       }
+      if (typeof body.assistant === 'string') { assistantId = body.assistant.trim(); log(assistantId ? `assistant ${assistantId}` : 'assistant cleared'); }
       if (body.conversation === null || typeof body.conversation === 'string') {
         conversationCache = body.conversation || null;
         conversationIndex = 0;
         if (!conversationCache) conversationList = [];
         log(conversationCache ? `conversation ${conversationCache}` : 'conversation cleared');
       }
-      return json(res, 200, { ok: true, defaultModel, conversation: PINNED_CONVERSATION || conversationCache });
+      return json(res, 200, { ok: true, defaultModel, assistant: assistantId || null, conversation: PINNED_CONVERSATION || conversationCache });
     }
 
     if (path === '/ext/events' && req.method === 'GET') return extEvents(req, res);
@@ -537,6 +547,7 @@ const server = http.createServer(async (req, res) => {
         activeJobs: jobs.size,
         defaultModel,
         conversation: PINNED_CONVERSATION || conversationCache,
+        assistant: assistantId || null,
         models: cachedModels(),
       });
     }
