@@ -13,6 +13,11 @@ streaming.
 
 <img width="2048" height="1067" alt="image" src="https://github.com/user-attachments/assets/1a288db9-bd0a-42cc-9651-bc66958d5fc9" />
 
+
+
+https://github.com/user-attachments/assets/aa8ee7aa-ba2a-4f7c-ab9c-4f401cffd3b2
+
+
 ```
 terminal ──HTTP──▶ bridge (node, no deps)
                       │  SSE: jobs out, POST: deltas back
