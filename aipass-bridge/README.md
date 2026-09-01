@@ -55,7 +55,7 @@ rather than the agent resending it every run. Create a custom assistant once at
 | **รูปแบบ** (format) | `สนทนา` (conversational) |
 | **AI โมเดลตั้งต้น** (model) | `Claude Sonnet 5` — best at holding the protocol |
 | **แท็ก** (tags) | `coding`, `local-files` |
-| **รายละเอียด** (description, display only) | `แก้ไขไฟล์ในเครื่องผ่าน bridge ด้วยคำสั่ง NEED / EDIT / CREATE / DONE` |
+| **รายละเอียด** (description, display only) | `แก้ไขไฟล์ในเครื่องผ่าน bridge ด้วยคำสั่ง NEED / SEARCH / EDIT / CREATE / DONE` |
 | **เพิ่มชุดความรู้** (knowledge files) | leave empty |
 
 Paste this verbatim into **รูปแบบการดำเนินการของ AI** (the behaviour field,
@@ -153,11 +153,26 @@ its own pending work, you get a unified diff at the end, and nothing touches
 disk until `--apply`. Paths are confined to `--root`; shell access needs
 `--allow-run`.
 
-The model reads files with a line-number gutter and pages through long ones by
-range (`NEED file path 200-320`); `SEARCH <text>` greps the whole tree for
-`file:line` matches so it can locate a symbol without reading everything; and an
-`EDIT` whose `FIND` text is not unique is refused rather than applied to the
-wrong occurrence.
+### Actions the agent understands
+
+The model replies with these on their own lines; the agent runs each one locally
+and pastes the result back. This is the whole tool set:
+
+| Action | What it does |
+|---|---|
+| `NEED dir <path>` | list a directory (`.` for the project root) |
+| `NEED file <path>` | read a file, with line numbers; add a range like `NEED file src/app.ts 200-320` for a slice of a long one |
+| `SEARCH <text>` | grep the whole project, returning `file:line: excerpt` matches — find a symbol without reading every file |
+| `EDIT <path>` → `FIND` … `NEW` … `END` | replace an exact snippet; the `FIND` text must match **one** place or the edit is refused |
+| `CREATE <path>` … `END` | create a new file or overwrite an existing one |
+| `RUN` … `END` | run a shell command — **off unless you pass `--allow-run`** |
+| `DONE <summary>` | finish, with a one-line summary |
+
+A few guarantees worth knowing: reads carry a line-number gutter but the model
+never has to keep those (they are stripped from `FIND` automatically); an `EDIT`
+whose `FIND` text is not unique is refused rather than applied to the wrong
+occurrence; and long files page a screen at a time with a hint for the next
+range.
 
 **Watch mode** (`--watch`) keeps the agent open and takes follow-up tasks on the
 same conversation, so the model keeps everything it has already read in context
