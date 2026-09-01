@@ -3,6 +3,16 @@
 Use [de.aipass.net](https://de.aipass.net/chat) from your terminal, with
 streaming.
 
+<img width="2048" height="1055" alt="image" src="https://github.com/user-attachments/assets/fa865ce3-7cf1-41f9-b98e-1f5a489a7619" />
+
+<img width="2048" height="1332" alt="image" src="https://github.com/user-attachments/assets/101dcb7c-8e20-47f1-8858-de43aa06bc8f" />
+
+<img width="2048" height="1332" alt="image" src="https://github.com/user-attachments/assets/d9115273-2585-4eeb-808e-3c6368b985a7" />
+
+<img width="2904" height="1444" alt="image" src="https://github.com/user-attachments/assets/0715f177-0ac0-476a-a175-46661e99cf89" />
+
+<img width="2048" height="1067" alt="image" src="https://github.com/user-attachments/assets/1a288db9-bd0a-42cc-9651-bc66958d5fc9" />
+
 ```
 terminal ──HTTP──▶ bridge (node, no deps)
                       │  SSE: jobs out, POST: deltas back
