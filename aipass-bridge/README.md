@@ -171,7 +171,7 @@ This works within the constraints above rather than against them:
   a couple of hundred bytes instead of resending a prompt every step.
 - **No system prompt.** The preamble is just the first user message, which is
   the only channel this endpoint has.
-- **The format is prose-shaped**: `ASK read some_file.ts`, no angle brackets, no
+- **The format is prose-shaped**: `NEED file some_file.ts`, no angle brackets, no
   `key=value` pairs, no absolute paths, no banner rules. Every one of those drew
   a 403 in earlier attempts, and none of them was load-bearing.
 - **It never claims the model has tools.** The model's own system prompt says
@@ -218,6 +218,68 @@ Tool results are capped at 3000 bytes (`--max-result`) for the same reason.
 The npm scripts in this repo avoid `node -e "…"` one-liners for exactly this
 reason — the agent reads `package.json` early in almost any task, and a script
 field shaped like code execution got the whole read rejected.
+
+## Try it
+
+Run these top to bottom — the early ones are zero-risk (read-only, or a dry run
+that writes nothing), and each proves a bit more. Use a scratch folder for the
+builds so your own repo stays clean:
+
+```bash
+mkdir -p ~/Desktop/agent-test
+```
+
+**1. Read-only — proves the whole chain, writes nothing.**
+
+```bash
+npm run agent -- "What does this project do and what's the tech stack?" --root .
+```
+
+It reads the README and `package.json`, then answers. If this works, the
+extension, bridge, and conversation flow are all healthy.
+
+**2. One self-contained file — the classic first build (dry run).**
+
+```bash
+npm run agent -- "Create index.html: a self-contained todo app with inline CSS and JS. Add, complete, delete todos, persist to localStorage. Clean, modern look." --root ~/Desktop/agent-test
+```
+
+You see the whole file as a `+` diff; nothing is written. Add `--apply` to write
+it, then `open ~/Desktop/agent-test/index.html`.
+
+**3. Edit an existing file — exercises `EDIT` / `FIND` / `NEW`.**
+
+```bash
+npm run agent -- "In index.html, add a button that clears all completed todos at once." --root ~/Desktop/agent-test --apply
+```
+
+It reads the file first, then makes a surgical edit — a real before/after diff,
+not a rewrite.
+
+**4. A small multi-file project.**
+
+```bash
+npm run agent -- "Create a tiny expense tracker: index.html, style.css, and app.js as separate files. Add expenses with amount and category, show a running total." --root ~/Desktop/agent-test --apply
+```
+
+**5. Watch mode — iterate live, the real workflow.**
+
+```bash
+npm run agent -- "Create a Pomodoro timer as a single index.html: 25-minute countdown, start/pause/reset." --root ~/Desktop/agent-test --apply --watch
+```
+
+Then keep typing follow-ups at the `task>` prompt — each builds on what it
+already wrote, in the same conversation:
+
+```
+task> add a short-break mode of 5 minutes
+task> play a sound when the timer hits zero
+task> make it dark by default
+```
+
+Start with **#1**: if it answers cleanly, everything after it is just the agent
+doing more. If a step returns a `403`, it hit an upstream filter shape not yet
+substituted — the failing fragment prints, and it is usually a one-line fix.
 
 ## Conversations
 
