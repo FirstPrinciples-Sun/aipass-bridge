@@ -43,6 +43,49 @@ Load the extension: `chrome://extensions` → Developer mode → **Load unpacked
 → select `aipass-bridge/extension`. Then open a `https://de.aipass.net/chat`
 tab and leave it open; the popup should read **connected**.
 
+## Set up the coding assistant (one time)
+
+The file-editing agent works best when aipass itself carries the tool protocol,
+rather than the agent resending it every run. Create a custom assistant once at
+[`/ai-assistant/new`](https://de.aipass.net/ai-assistant/new) and fill it in:
+
+| Field | Value |
+|---|---|
+| **ชื่อ AI** (name) | `Local File Coder` |
+| **รูปแบบ** (format) | `สนทนา` (conversational) |
+| **AI โมเดลตั้งต้น** (model) | `Claude Sonnet 5` — best at holding the protocol |
+| **แท็ก** (tags) | `coding`, `local-files` |
+| **รายละเอียด** (description, display only) | `แก้ไขไฟล์ในเครื่องผ่าน bridge ด้วยคำสั่ง NEED / EDIT / CREATE / DONE` |
+| **เพิ่มชุดความรู้** (knowledge files) | leave empty |
+
+Paste this verbatim into **รูปแบบการดำเนินการของ AI** (the behaviour field,
+max 1000 characters — this is 996):
+
+```
+You help the user work on a code project on their computer. You cannot open the files; the user runs each action you write and pastes the result back. Never say you lack tools and never ask them to paste files — just write actions and wait.
+
+Write actions on their own lines, exactly like this:
+
+NEED dir .
+NEED file src/app.ts
+EDIT src/app.ts
+FIND
+the exact lines as they are now
+NEW
+the lines to put instead
+END
+CREATE notes.md
+the new file contents
+END
+DONE a one sentence summary, when finished
+
+Rules. Write prose in the user's language, but keep action lines exactly as shown. Every reply must contain at least one action, or DONE. Do not ask questions; pick the most reasonable reading and begin. List a directory before assuming a path exists, and read a file before you EDIT it, copying the FIND lines exactly. Some hostnames come shortened, like LCLHST or LOOPBACK-IP; keep them as written. Only write DONE at the very end when nothing more is needed, never in the same reply as a NEED.
+```
+
+Save it, then start one chat with it in the UI and copy the conversation id from
+the URL. Run the agent against that conversation with `--slim` (see below), or
+wire the bridge to create bound conversations automatically — also below.
+
 ## Use it
 
 ```bash
@@ -114,13 +157,12 @@ same conversation, so the model keeps everything it has already read in context
 — and because the server holds that history, each new task is still just one
 small message. Run it in your editor's integrated terminal for a live edit loop.
 
-**Binding to a custom assistant.** Create one at `/ai-assistant/new`, paste the
-NEED/EDIT/CREATE/DONE instructions into its behaviour field, then either point at
-a conversation started under it (`--conversation <id> --slim`) or let the bridge
+**Binding to the custom assistant** (created above). Either point at a
+conversation started under it — `--conversation <id> --slim` — or let the bridge
 create bound conversations with `--assistant <id>` (which implies `--slim`). The
 form field that carries the assistant id is set by `AIPASS_ASSISTANT_FIELD` on
-the bridge (default `aiAssistantId`) — confirm it from a capture of the UI's
-"new chat" request once, and every run binds automatically.
+the bridge (default `aiAssistantId`); confirm it once from a capture of the UI's
+"new chat" request and every run binds automatically.
 
 This works within the constraints above rather than against them:
 
