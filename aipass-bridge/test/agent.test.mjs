@@ -433,3 +433,27 @@ test('the model can open a file whose name was encoded (.env → DOT-ENV)', asyn
   const result = handler.sent[1];
   assert.match(result, /TOKEN=abc/, 'the real .env file was read and its contents returned (encoded)');
 });
+
+test('tag-shaped content passes a tag-blocking edge and restores byte-for-byte', async (t) => {
+  const original = 'export default function Layout() {\n  return (\n    <html lang="en">\n      <body>{children}</body>\n    </html>\n  );\n}\n';
+  const dir = tempDir({ 'layout.tsx': original });
+  const handler = scripted([
+    'NEED file layout.tsx',
+    'EDIT layout.tsx\nFIND\n    <html lang="en">\nNEW\n    <html lang="th">\nEND',
+    'DONE switched the language',
+  ], {
+    reject: (t) => /<[a-zA-Z/]/.test(t),   // the edge blocks any tag-opening <
+  });
+  const ext = await new FakeExtension(bridge.base, { onChat: handler }).connect();
+  t.after(() => ext.disconnect());
+
+  await agent(dir, ['--apply']);
+  const sent = handler.sent.join('\n');
+  assert.doesNotMatch(sent, /<[a-zA-Z/]/, 'no tag-opening < may reach the edge');
+  assert.match(sent, /TAG-LT/, 'tags are encoded, not dropped');
+  assert.equal(
+    fs.readFileSync(path.join(dir, 'layout.tsx'), 'utf8'),
+    original.replace('lang="en"', 'lang="th"'),
+    'only the intended edit is applied; all other tags are intact',
+  );
+});

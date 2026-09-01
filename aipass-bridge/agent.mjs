@@ -121,6 +121,10 @@ const SUBSTITUTIONS = [
   // rides inside `process.env`, which appears constantly in real code.
   [/process\.env/gi, 'PROCESS-ENV'],
   [/\.env\b/gi, 'DOT-ENV'],
+  // The general case: a `<` that opens a tag (`<html`, `<div`, `</body>`, a JSX
+  // component) is what an XSS rule matches. Encode just that `<` — not `a < b`
+  // or `=>` — so any HTML/JSX/XML file survives, restored exactly on write.
+  [/<(?=[a-zA-Z/!?])/g, 'TAG-LT'],
 ];
 
 const outbound = (text) => SUBSTITUTIONS.reduce((acc, [re, to]) => acc.replace(re, to), text);
@@ -141,6 +145,7 @@ const RESTORE = [
   [/JS-SCHEME/g, 'javascript:'],
   [/PROCESS-ENV/g, 'process.env'],
   [/DOT-ENV/g, '.env'],
+  [/TAG-LT/g, '<'],
 ];
 
 const inbound = (text) => (text == null ? text : RESTORE.reduce((acc, [re, to]) => acc.replace(re, to), text));
