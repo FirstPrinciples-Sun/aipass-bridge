@@ -284,6 +284,18 @@ task> play a sound when the timer hits zero
 task> make it dark by default
 ```
 
+**6. Search a real codebase — run this against the repo itself.** A task that
+has to *find* something first is where `SEARCH` earns its place:
+
+```bash
+npm run agent -- "Find everywhere the bridge reads a process.env variable and list each one with what it configures." --root .
+```
+
+Watch it `SEARCH process.env`, get back `file:line` hits across the tree, read
+only the files that matter, and answer — instead of reading everything. A rename
+task (*"find every call to `outbound(` and …"*) exercises search-then-edit the
+same way.
+
 Start with **#1**: if it answers cleanly, everything after it is just the agent
 doing more. If a step returns a `403`, it hit an upstream filter shape not yet
 substituted — the failing fragment prints, and it is usually a one-line fix.
