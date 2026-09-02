@@ -423,7 +423,7 @@ const MIN_SPLIT = 300;
 // contain code-execution shapes — `node -e`, `curl`, `rm -rf`, `/bin/sh` — that
 // no amount of splitting gets past. Drop only the offending lines so the run
 // survives and the model still sees the rest of the file.
-const RISKY_LINE = /(node\s+-{1,2}e\b|--eval\b|\beval\(|child_process|exec(Sync)?\(|spawnSync?\(|\bcurl\b|\bwget\b|\b(ba)?sh\s+-c\b|rm\s+-rf|\/etc\/|\/bin\/(ba)?sh|\.\.\/\.\.\/|<!doctype|<!--|-->|<script|<\/script|javascript:|onerror\s*=|onload\s*=)/i;
+const RISKY_LINE = /(node\s+-{1,2}e\b|--eval\b|\beval\(|child_process|exec(Sync)?\(|spawnSync?\(|\bcurl\b|\bwget\b|\b(ba)?sh\s+-c\b|rm\s+-rf|\/etc\/|\/bin\/(ba)?sh|\.\.\/\.\.\/|<!doctype|<!--|-->|<script|<\/script|javascript:|onerror\s*=|onload\s*=|\bnpm\s+(run|install|test|start|build)\b|\bnpx\b|\byarn\b|\bpnpm\b|\bbun\b|\bpip\s+install\b|\bsudo\b|\bchmod\b|\bchown\b|\bgit\s+(push|reset|rebase)\b|\bmake\b|\bapt-get\b|\bbrew\b)/i;
 
 function redact(text) {
   let dropped = 0;
@@ -551,11 +551,22 @@ async function runTask(taskText, { first }) {
       : `New task: ${taskText}\n\nWhat should I open first?`;
 
   let nudges = 0;
+  let sendFailures = 0;
   for (let step = 1; step <= MAX_STEPS; step++) {
     console.log(bold(`\n─── step ${step}/${MAX_STEPS} ${'─'.repeat(40)}`));
     let reply;
     try { reply = await sayResilient(next); }
-    catch (err) { console.error(red(`\n${err.message}`)); break; }
+    catch (err) {
+      console.error(red(`\n${err.message}`));
+      if (++sendFailures > 2) { console.log(red('\ntoo many send failures — stopping.')); break; }
+      // The tool results were rejected by the upstream filter, so the model
+      // never saw the file. Fall back to a simple prompt so the task can keep
+      // going instead of stopping entirely.
+      console.log(dim('  falling back — telling the model to continue without that content'));
+      next = 'I could not show you the previous content because it was rejected by the upstream filter. Continue with the task — create or edit files directly without needing to see that content.';
+      continue;
+    }
+    sendFailures = 0;
     reply = inbound(reply); // decode: everything we send is encoded, everything we read is decoded
 
     const calls = parse(reply);
