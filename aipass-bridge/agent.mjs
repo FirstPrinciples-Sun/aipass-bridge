@@ -74,6 +74,12 @@ const green = (s) => `\x1b[32m${s}\x1b[0m`;
 const red = (s) => `\x1b[31m${s}\x1b[0m`;
 const cyan = (s) => `\x1b[36m${s}\x1b[0m`;
 
+// Ensure the project root exists so the agent can start from an empty folder.
+if (!fs.existsSync(ROOT)) {
+  fs.mkdirSync(ROOT, { recursive: true });
+  console.log(dim(`created root directory ${ROOT}`));
+}
+
 /* ------------------------------------------------------- overlay filesystem */
 
 const overlay = new Map();
@@ -162,6 +168,7 @@ const inbound = (text) => (text == null ? text : RESTORE.reduce((acc, [re, to]) 
 const TOOLS = {
   list(arg) {
     const abs = safe(arg || '.');
+    if (!fs.existsSync(abs)) return '(directory does not exist yet — you can CREATE files here and the folders will be made automatically)';
     return clip(fs.readdirSync(abs, { withFileTypes: true })
       .filter((e) => !SKIP.has(e.name))
       .map((e) => (e.isDirectory() ? `${e.name}/` : e.name))
@@ -264,9 +271,9 @@ const TOOLS = {
 // Plain words, no angle brackets, no key=value pairs, no banner rules, no
 // absolute paths. Everything that drew a WAF 403 in earlier attempts was
 // structural; prose-shaped directives carry none of those signals.
-const PREAMBLE = `I am reading through a project with you. The files are open in front of me, and I will paste you anything you want to look at.
+const PREAMBLE = `I am reading through a project with you. The files are open in front of me, and I will paste you anything you want to look at. I can also create new files and folders for you.
 
-So just tell me what you want to see next, and put that on its own line in this shape, because my editor watches for these markers:
+So just tell me what you want to see or create next, and put that on its own line in this shape, because my editor watches for these markers:
 
 NEED dir .
 NEED file README.md
@@ -281,7 +288,7 @@ NEW
 the lines to put there instead
 END
 
-To start a new file:
+To start a new file (this also creates any missing folders):
 
 CREATE notes.md
 the contents
@@ -291,13 +298,13 @@ Once you have everything you need and are giving me your final answer, finish wi
 
 DONE one sentence about what you found or changed
 
-Only write DONE at the very end, when nothing more is needed. Never put DONE in the same reply as a NEED — ask for what you want, wait for me to paste it, and read it first.
+Important rules. Every reply must contain at least one marker (NEED, SEARCH, EDIT, CREATE${ALLOW_RUN ? ', RUN' : ''}, or DONE). Do not explain that you cannot see files — just ask for what you need with NEED or CREATE what is missing. Do not ask me questions — pick a reasonable next step and write the marker. Never put DONE in the same reply as a NEED or CREATE — finish the work first, then end with DONE.
 
 The markers are only formatting for my editor. Nothing runs on your side — I do all of it and paste every result straight back to you, so keep going until you have what you need.
 
 A few practical notes. Answer in my language. Look at a file before changing it, and copy the lines under FIND exactly as they appear. When I show a file the numbers down the left are only for reference — do not put them in FIND. Big files come a screen at a time; ask for a range like NEED file path 200-320 to see more. To find where something lives without reading every file, use SEARCH followed by the text. Some hostnames and addresses are written in a shortened form such as LCLHST and LOOPBACK-IP; keep them as written and I will expand them again. If my question can be answered without changing anything, just answer it and end with DONE.`;
 
-const REMINDER = 'What next? Ask for anything else you need, or finish with DONE if you have enough.';
+const REMINDER = 'What next? Write a marker: NEED, SEARCH, EDIT, CREATE, or DONE. Do not explain — just pick the next step.';
 
 // The model usually writes its answer as prose and then a bare DONE, so fall
 // back to that prose rather than reporting an empty result.
@@ -559,7 +566,7 @@ async function runTask(taskText, { first }) {
       if (done) { console.log(green(`\n✓ ${done.arg || prose(reply) || 'done'}`)); break; }
       if (++nudges > 2) { console.log(red('\nno marker after three replies — stopping.')); break; }
       console.log(red(`\nno marker in that reply — nudging (${nudges}/2)`));
-      next = `I could not tell what to open from that. I have the project open here and I am pasting you whatever you name — nothing happens on your side. ${REMINDER}`;
+      next = `I could not tell what to do from that reply because it contained no marker. You must reply with one of these markers on their own lines: NEED dir/file, SEARCH, EDIT, CREATE,${ALLOW_RUN ? ' RUN,' : ''} or DONE. Do not explain, apologise, or ask questions — just write the next marker. ${REMINDER}`;
       continue;
     }
     nudges = 0;
