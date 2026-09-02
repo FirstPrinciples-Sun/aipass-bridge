@@ -6,117 +6,343 @@
 <title>aipass bridge</title>
 <style>
   :root {
-    --bg: #0f172a;
-    --card: #1e293b;
-    --text: #e2e8f0;
-    --muted: #94a3b8;
-    --border: #334155;
-    --accent: #38bdf8;
+    --bg: #f8fafc;
+    --bg-secondary: #ffffff;
+    --text: #0f172a;
+    --text-muted: #64748b;
+    --border: #e2e8f0;
+    --accent: #0ea5e9;
+    --accent-hover: #0284c7;
     --danger: #ef4444;
     --success: #22c55e;
+    --warning: #f59e0b;
+    --radius: 12px;
+    --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
   }
-  @media (prefers-color-scheme: light) {
-    :root { --bg: #f8fafc; --card: #ffffff; --text: #0f172a; --muted: #64748b; --border: #e2e8f0; --accent: #0284c7; }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f172a;
+      --bg-secondary: #1e293b;
+      --text: #e2e8f0;
+      --text-muted: #94a3b8;
+      --border: #334155;
+      --accent: #38bdf8;
+      --accent-hover: #7dd3fc;
+      --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.5), 0 1px 2px -1px rgb(0 0 0 / 0.5);
+      --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5), 0 4px 6px -4px rgb(0 0 0 / 0.5);
+    }
   }
-  * { box-sizing: border-box; }
-  body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 0; background: var(--bg); color: var(--text); line-height: 1.5; }
-  .container { max-width: 1000px; margin: 0 auto; padding: 16px; }
-  header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-  h1 { font-size: 20px; margin: 0; }
-  .status { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); }
-  .dot { width: 10px; height: 10px; border-radius: 50%; }
-  .up { background: var(--success); }
-  .down { background: var(--danger); }
-  .tabs { display: flex; gap: 4px; margin-bottom: 16px; }
-  .tab { padding: 8px 14px; background: var(--card); border: 1px solid var(--border); border-radius: 8px 8px 0 0; cursor: pointer; color: var(--muted); user-select: none; }
-  .tab.active { background: var(--bg); color: var(--text); border-bottom-color: transparent; }
-  .panel { display: none; background: var(--card); border: 1px solid var(--border); border-radius: 0 8px 8px 8px; padding: 16px; }
-  .panel.active { display: block; }
-  label { display: block; margin-bottom: 8px; font-size: 14px; font-weight: 500; }
-  input, textarea, select, button { font: inherit; color: inherit; }
-  input[type="text"], textarea, select { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); margin-bottom: 12px; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
+
+  /* Header */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .logo { display: flex; align-items: center; gap: 12px; }
+  .logo-icon {
+    width: 40px; height: 40px;
+    background: linear-gradient(135deg, var(--accent), #6366f1);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: 700; color: white;
+  }
+  h1 { font-size: 22px; font-weight: 700; }
+  .status-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: 9999px;
+    font-size: 13px; font-weight: 500;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+  }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .status-dot.up { background: var(--success); }
+  .status-dot.down { background: var(--danger); }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 8px; margin-bottom: 24px; background: var(--bg-secondary); padding: 4px; border-radius: var(--radius); border: 1px solid var(--border); }
+  .tab {
+    flex: 1; padding: 12px 16px; border-radius: 8px;
+    background: transparent; border: none; cursor: pointer;
+    color: var(--text-muted); font-weight: 500; font-size: 14px;
+    transition: all 0.2s ease;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .tab:hover { background: var(--border); color: var(--text); }
+  .tab.active { background: var(--bg); color: var(--text); box-shadow: var(--shadow); }
+
+  /* Panels */
+  .panel { display: none; }
+  .panel.active { display: block; animation: fadeIn 0.2s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* Cards */
+  .card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow); }
+  .card + .card { margin-top: 16px; }
+
+  /* Forms */
+  .form-group { margin-bottom: 20px; }
+  .form-group:last-child { margin-bottom: 0; }
+  label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 500; color: var(--text); }
+  .label-hint { font-size: 12px; color: var(--text-muted); font-weight: 400; margin-left: 4px; }
+  input[type="text"], textarea, select {
+    width: 100%; padding: 12px 14px;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg); color: var(--text);
+    font-size: 14px; line-height: 1.5;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  input[type="text"]:focus, textarea:focus, select:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgb(14 165 233 / 0.15);
+  }
   textarea { min-height: 120px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-  input[type="checkbox"] { width: auto; margin-right: 6px; }
-  button { background: var(--accent); color: white; border: none; border-radius: 6px; padding: 10px 16px; cursor: pointer; font-weight: 500; }
-  button:hover { opacity: .9; }
-  button:disabled { opacity: .5; cursor: not-allowed; }
-  .output { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px; min-height: 200px; white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; overflow-y: auto; max-height: 500px; }
-  .row { display: flex; gap: 12px; flex-wrap: wrap; }
-  .col { flex: 1; min-width: 200px; }
-  .hint { color: var(--muted); font-size: 12px; margin-top: -8px; margin-bottom: 12px; }
-  .danger { color: var(--danger); }
-  .success { color: var(--success); }
+  select { cursor: pointer; }
+
+  /* Checkbox */
+  .checkbox-group { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; }
+  .checkbox-item { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .checkbox-item input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; }
+  .checkbox-item label { margin: 0; cursor: pointer; font-weight: 400; }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 12px 20px; border-radius: 8px; border: none;
+    font-size: 14px; font-weight: 500; cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-primary:hover:not(:disabled) { background: var(--accent-hover); transform: translateY(-1px); box-shadow: var(--shadow-lg); }
+  .btn-secondary { background: var(--bg); color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary:hover:not(:disabled) { background: var(--border); }
+  .btn-danger { background: var(--danger); color: white; }
+  .btn-icon { padding: 8px; border-radius: 6px; }
+
+  /* Output */
+  .output-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .output-title { font-size: 14px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .output-actions { display: flex; gap: 8px; }
+  .output {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 16px; min-height: 240px; max-height: 480px; overflow-y: auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-word;
+  }
+  .output:empty::before { content: 'Output will appear here…'; color: var(--text-muted); }
+
+  /* Grid */
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
+
+  /* Spinner */
+  .spinner {
+    display: inline-block; width: 16px; height: 16px;
+    border: 2px solid currentColor; border-right-color: transparent;
+    border-radius: 50%; animation: spin 0.6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Status cards */
+  .status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .status-card { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .status-card-label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+  .status-card-value { font-size: 18px; font-weight: 600; }
+
+  /* Utility */
+  .flex { display: flex; }
+  .gap-2 { gap: 8px; }
+  .gap-3 { gap: 12px; }
+  .items-center { align-items: center; }
+  .justify-between { justify-content: space-between; }
+  .text-muted { color: var(--text-muted); }
+  .text-sm { font-size: 13px; }
+  .mb-4 { margin-bottom: 16px; }
 </style>
 </head>
 <body>
 <div class="container">
   <header>
-    <h1>aipass bridge</h1>
-    <div class="status"><span id="dot" class="dot down"></span><span id="statusText">checking…</span></div>
+    <div class="logo">
+      <div class="logo-icon">A</div>
+      <div>
+        <h1>aipass bridge</h1>
+        <div class="text-sm text-muted">Local bridge to de.aipass.net</div>
+      </div>
+    </div>
+    <div class="status-badge">
+      <span id="dot" class="status-dot down"></span>
+      <span id="statusText">checking…</span>
+    </div>
   </header>
 
   <div class="tabs">
-    <div class="tab active" data-tab="chat">Chat</div>
-    <div class="tab" data-tab="agent">Agent</div>
-    <div class="tab" data-tab="status">Status</div>
+    <button class="tab active" data-tab="chat">💬 Chat</button>
+    <button class="tab" data-tab="agent">🤖 Agent</button>
+    <button class="tab" data-tab="status">📊 Status</button>
   </div>
 
+  <!-- Chat Panel -->
   <div id="chat" class="panel active">
-    <label for="chatInput">Message</label>
-    <textarea id="chatInput" placeholder="พิมพ์ข้อความ…"></textarea>
-    <button id="sendChat">ส่งข้อความ</button>
-    <div id="chatOut" class="output" style="margin-top:12px">ready</div>
-    <div id="chatSources" class="hint"></div>
-  </div>
-
-  <div id="agent" class="panel">
-    <label for="task">Task</label>
-    <textarea id="task" placeholder="เช่น สร้างเว็ปขายขนม HTML ธรรมดา"></textarea>
-    <div class="row">
-      <div class="col">
-        <label for="root">Project root</label>
-        <input id="root" type="text" value="." placeholder="path to project">
-        <div class="hint">พาธของโปรเจกต์ที่ agent จะเข้าถึงได้ (เริ่มที่ cwd ถ้าปล่อยว่าง)</div>
+    <div class="card">
+      <div class="grid">
+        <div class="form-group">
+          <label for="chatModel">Model</label>
+          <select id="chatModel"></select>
+        </div>
+        <div class="form-group">
+          <label for="chatConversation">Conversation</label>
+          <select id="chatConversation">
+            <option value="">Most recent</option>
+          </select>
+        </div>
       </div>
-      <div class="col">
-        <label for="agentModel">Model</label>
-        <select id="agentModel"></select>
+      <div class="form-group">
+        <label for="chatInput">Message</label>
+        <textarea id="chatInput" placeholder="พิมพ์ข้อความที่นี่… (กด Ctrl+Enter เพื่อส่ง)"></textarea>
+      </div>
+      <div class="flex gap-2">
+        <button id="sendChat" class="btn btn-primary">ส่งข้อความ</button>
+        <button id="clearChat" class="btn btn-secondary">ล้าง</button>
       </div>
     </div>
-    <label><input type="checkbox" id="apply"> Apply changes (เขียนไฟล์จริง)</label>
-    <label><input type="checkbox" id="allowRun"> Allow shell commands</label>
-    <button id="runAgent">Run agent</button>
-    <div class="hint">Dry run by default — files are only written when Apply is checked.</div>
-    <div id="agentOut" class="output" style="margin-top:12px">ready</div>
+
+    <div class="card">
+      <div class="output-header">
+        <div class="output-title">Response</div>
+        <div class="output-actions">
+          <button id="copyChat" class="btn btn-secondary btn-icon" title="Copy">📋</button>
+        </div>
+      </div>
+      <div id="chatOut" class="output"></div>
+      <div id="chatSources" class="text-sm text-muted" style="margin-top: 8px;"></div>
+    </div>
   </div>
 
+  <!-- Agent Panel -->
+  <div id="agent" class="panel">
+    <div class="card">
+      <div class="form-group">
+        <label for="task">Task</label>
+        <textarea id="task" placeholder="เช่น สร้างเว็ปขายขนม HTML ธรรมดา"></textarea>
+      </div>
+
+      <div class="grid">
+        <div class="form-group">
+          <label for="root">Project root <span class="label-hint">พาธของโปรเจกต์</span></label>
+          <input id="root" type="text" value="." placeholder="เช่น D:\Projects\snack-shop">
+        </div>
+        <div class="form-group">
+          <label for="agentModel">Model</label>
+          <select id="agentModel"></select>
+        </div>
+      </div>
+
+      <div class="checkbox-group">
+        <div class="checkbox-item">
+          <input type="checkbox" id="apply">
+          <label for="apply">Apply changes (เขียนไฟล์จริง)</label>
+        </div>
+        <div class="checkbox-item">
+          <input type="checkbox" id="allowRun">
+          <label for="allowRun">Allow shell commands</label>
+        </div>
+      </div>
+
+      <div class="flex gap-2">
+        <button id="runAgent" class="btn btn-primary">Run agent</button>
+        <button id="clearAgent" class="btn btn-secondary">ล้างผลลัพธ์</button>
+      </div>
+      <div class="text-sm text-muted" style="margin-top: 8px;">
+        Dry run by default — ไฟล์จะถูกเขียนจริงเมื่อเช็ค Apply changes เท่านั้น
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="output-header">
+        <div class="output-title">Agent Log</div>
+        <div class="output-actions">
+          <button id="copyAgent" class="btn btn-secondary btn-icon" title="Copy">📋</button>
+        </div>
+      </div>
+      <div id="agentOut" class="output"></div>
+    </div>
+  </div>
+
+  <!-- Status Panel -->
   <div id="status" class="panel">
-    <pre id="statusOut" class="output" style="min-height:120px">loading…</pre>
+    <div class="status-grid">
+      <div class="status-card">
+        <div class="status-card-label">Extensions</div>
+        <div id="statusExtensions" class="status-card-value">-</div>
+      </div>
+      <div class="status-card">
+        <div class="status-card-label">Active Jobs</div>
+        <div id="statusJobs" class="status-card-value">-</div>
+      </div>
+      <div class="status-card">
+        <div class="status-card-label">Default Model</div>
+        <div id="statusModel" class="status-card-value text-sm">-</div>
+      </div>
+      <div class="status-card">
+        <div class="status-card-label">Conversation</div>
+        <div id="statusConversation" class="status-card-value text-sm">-</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="output-header">
+        <div class="output-title">Raw Status</div>
+        <div class="output-actions">
+          <button id="copyStatus" class="btn btn-secondary btn-icon" title="Copy">📋</button>
+        </div>
+      </div>
+      <pre id="statusOut" class="output" style="min-height: 200px;">loading…</pre>
+    </div>
   </div>
 </div>
 
 <script>
 const $ = (id) => document.getElementById(id);
 
-// Tabs
-const panels = document.querySelectorAll('.panel');
+// ── Tabs ────────────────────────────────────────────────────────────────────
 document.querySelectorAll('.tab').forEach((tab) => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t === tab));
-    panels.forEach((p) => p.classList.toggle('active', p.id === tab.dataset.tab));
+    document.querySelectorAll('.panel').forEach((p) => p.classList.toggle('active', p.id === tab.dataset.tab));
   });
 });
 
+// ── Status ──────────────────────────────────────────────────────────────────
 async function refreshStatus() {
   try {
     const r = await fetch('/status');
     const s = await r.json();
-    $('dot').className = `dot ${s.extensions > 0 ? 'up' : 'down'}`;
-    $('statusText').textContent = s.extensions > 0 ? `connected (${s.extensions})` : 'no extension connected';
+    const connected = s.extensions > 0;
+    $('dot').className = `status-dot ${connected ? 'up' : 'down'}`;
+    $('statusText').textContent = connected ? `connected (${s.extensions})` : 'no extension';
+    $('statusExtensions').textContent = s.extensions;
+    $('statusJobs').textContent = s.activeJobs;
+    $('statusModel').textContent = s.defaultModel || '-';
+    $('statusConversation').textContent = s.conversation || '-';
     $('statusOut').textContent = JSON.stringify(s, null, 2);
   } catch (err) {
-    $('dot').className = 'dot down';
-    $('statusText').textContent = 'bridge unreachable';
+    $('dot').className = 'status-dot down';
+    $('statusText').textContent = 'unreachable';
     $('statusOut').textContent = String(err);
   }
 }
@@ -124,38 +350,64 @@ async function refreshStatus() {
 async function loadModels() {
   try {
     const { data } = await fetch('/v1/models').then((r) => r.json());
-    const sel = $('agentModel');
-    sel.innerHTML = '';
-    for (const m of data) {
-      const opt = document.createElement('option');
-      opt.value = m.id;
-      opt.textContent = `${m.name || m.id}${m.free_credit ? ' [free]' : ''}`;
-      sel.append(opt);
+    for (const id of ['chatModel', 'agentModel']) {
+      const sel = $(id);
+      sel.innerHTML = '';
+      for (const m of data) {
+        const opt = document.createElement('option');
+        opt.value = m.id;
+        opt.textContent = `${m.name || m.id}${m.free_credit ? ' [free]' : ''}`;
+        sel.append(opt);
+      }
     }
   } catch {}
 }
 
-// Chat
+// ── Helpers ─────────────────────────────────────────────────────────────────
+function copyToClipboard(text, btn) {
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = '✓';
+    setTimeout(() => btn.textContent = orig, 1000);
+  });
+}
+
+function setLoading(btn, loading) {
+  btn.disabled = loading;
+  const orig = btn.dataset.origText || btn.textContent;
+  btn.dataset.origText = orig;
+  btn.innerHTML = loading ? '<span class="spinner"></span> Loading…' : orig;
+}
+
+// ── Chat ────────────────────────────────────────────────────────────────────
 const chatOut = $('chatOut');
-$('sendChat').addEventListener('click', async () => {
+const chatSources = $('chatSources');
+
+$('sendChat').addEventListener('click', sendChat);
+$('chatInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendChat();
+});
+
+async function sendChat() {
   const text = $('chatInput').value.trim();
   if (!text) return;
   const btn = $('sendChat');
-  btn.disabled = true;
-  chatOut.textContent = 'thinking…\n';
+  setLoading(btn, true);
+  chatOut.textContent = '';
+  chatSources.textContent = '';
   try {
     const res = await fetch('/v1/chat/completions', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        model: $('agentModel').value || undefined,
+        model: $('chatModel').value || undefined,
         stream: true,
-        messages: [{ role: 'user', content: $('chatInput').value }],
+        messages: [{ role: 'user', content: text }],
       }),
     });
+    if (!res.ok) throw new Error(`bridge returned ${res.status}`);
     const reader = res.body.getReader();
     const dec = new TextDecoder();
     let buf = '';
-    chatOut.textContent = '';
     for (;;) {
       const { value, done } = await reader.read();
       if (done) break;
@@ -173,23 +425,33 @@ $('sendChat').addEventListener('click', async () => {
           if (delta.content) chatOut.textContent += delta.content;
         } catch {}
       }
+      chatOut.scrollTop = chatOut.scrollHeight;
     }
     chatOut.textContent += '\n';
   } catch (err) {
-    chatOut.textContent = `error: ${err}`;
+    chatOut.textContent = `Error: ${err.message}`;
   } finally {
-    btn.disabled = false;
+    setLoading(btn, false);
   }
+}
+
+$('clearChat').addEventListener('click', () => { chatOut.textContent = ''; chatSources.textContent = ''; });
+$('copyChat').addEventListener('click', (e) => copyToClipboard(chatOut.textContent, e.currentTarget));
+
+// ── Agent ───────────────────────────────────────────────────────────────────
+const agentOut = $('agentOut');
+
+$('runAgent').addEventListener('click', runAgent);
+$('task').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) runAgent();
 });
 
-// Agent
-const agentOut = $('agentOut');
-$('runAgent').addEventListener('click', async () => {
+async function runAgent() {
   const task = $('task').value.trim();
-  if (!task) { alert('Please enter a task'); return; }
+  if (!task) { alert('กรุณาใส่ task'); return; }
   const btn = $('runAgent');
-  btn.disabled = true;
-  agentOut.textContent = 'starting…\n';
+  setLoading(btn, true);
+  agentOut.textContent = '';
   try {
     const res = await fetch('/ui/agent', {
       method: 'POST', headers: { 'content-type': 'application/json' },
@@ -201,13 +463,9 @@ $('runAgent').addEventListener('click', async () => {
         model: $('agentModel').value,
       }),
     });
-    if (!res.ok) {
-      agentOut.textContent = `error: bridge returned ${res.status}`;
-      return;
-    }
+    if (!res.ok) throw new Error(`bridge returned ${res.status}`);
     const reader = res.body.getReader();
     const dec = new TextDecoder();
-    agentOut.textContent = '';
     let buf = '';
     for (;;) {
       const { value, done } = await reader.read();
@@ -227,14 +485,22 @@ $('runAgent').addEventListener('click', async () => {
           } catch {}
         }
       }
+      agentOut.scrollTop = agentOut.scrollHeight;
     }
   } catch (err) {
-    agentOut.textContent = `error: ${err}`;
+    agentOut.textContent = `Error: ${err.message}`;
   } finally {
-    btn.disabled = false;
+    setLoading(btn, false);
   }
-});
+}
 
+$('clearAgent').addEventListener('click', () => { agentOut.textContent = ''; });
+$('copyAgent').addEventListener('click', (e) => copyToClipboard(agentOut.textContent, e.currentTarget));
+
+// ── Status copy ─────────────────────────────────────────────────────────────
+$('copyStatus').addEventListener('click', (e) => copyToClipboard($('statusOut').textContent, e.currentTarget));
+
+// ── Init ────────────────────────────────────────────────────────────────────
 refreshStatus();
 setInterval(refreshStatus, 3000);
 loadModels();
