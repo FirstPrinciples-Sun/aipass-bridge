@@ -9,6 +9,14 @@
 // for the web UI, so there is nothing to reconstruct on this side.
 import http from 'node:http';
 import { randomUUID } from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = fileURLToPath(new URL('.', import.meta.url));
+const UI_HTML = path.join(__dirname, 'ui.html');
+const AGENT_SCRIPT = path.join(__dirname, '..', 'agent.mjs');
 
 const PORT = Number(process.env.AIPASS_PORT ?? 8787);
 const HOST = process.env.AIPASS_HOST ?? '127.0.0.1';
@@ -29,6 +37,7 @@ let assistantId = process.env.AIPASS_ASSISTANT_ID ?? '';
 const ASSISTANT_FIELD = process.env.AIPASS_ASSISTANT_FIELD ?? 'aiAssistantId';
 
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
+const stripAnsi = (s) => String(s).replace(/\x1b\[[0-9;]*m/g, '');
 
 /* ------------------------------------------------- react-router turbo-stream */
 
@@ -532,6 +541,63 @@ const server = http.createServer(async (req, res) => {
         log(conversationCache ? `conversation ${conversationCache}` : 'conversation cleared');
       }
       return json(res, 200, { ok: true, defaultModel, assistant: assistantId || null, conversation: PINNED_CONVERSATION || conversationCache });
+    }
+
+    if (path === '/' || path === '/index.html') {
+      try {
+        const html = fs.readFileSync(UI_HTML, 'utf8');
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        res.end(html);
+      } catch {
+        oaiError(res, 500, 'ui not found', 'server_error');
+      }
+      return;
+    }
+
+    if (path === '/ui/agent' && req.method === 'POST') {
+      const body = JSON.parse(await readBody(req) || '{}');
+      const { task, root, apply, allowRun, model } = body ?? {};
+      if (typeof task !== 'string' || !task.trim()) return oaiError(res, 400, 'task is required');
+
+      res.writeHead(200, {
+        'content-type': 'text/event-stream; charset=utf-8',
+        'cache-control': 'no-cache, no-transform',
+        connection: 'keep-alive',
+        'access-control-allow-origin': '*',
+      });
+      const emit = (obj) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
+
+      try {
+        const args = [AGENT_SCRIPT, task];
+        if (root) args.push('--root', String(root));
+        if (apply) args.push('--apply');
+        if (allowRun) args.push('--allow-run');
+        if (model) args.push('--model', String(model));
+
+        const child = spawn(process.execPath, args, {
+          cwd: process.cwd(),
+          env: { ...process.env, AIPASS_BRIDGE: `http://${HOST}:${PORT}` },
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+
+        let killed = false;
+        req.on('close', () => {
+          if (!killed) { killed = true; child.kill('SIGKILL'); }
+        });
+
+        child.stdout.on('data', (chunk) => emit({ type: 'data', text: stripAnsi(chunk) }));
+        child.stderr.on('data', (chunk) => emit({ type: 'error', text: stripAnsi(chunk) }));
+        child.on('error', (err) => emit({ type: 'error', text: String(err?.message ?? err) }));
+        child.on('close', (code) => {
+          emit({ type: 'end', code });
+          res.end();
+        });
+      } catch (err) {
+        emit({ type: 'error', text: String(err?.message ?? err) });
+        emit({ type: 'end', code: 1 });
+        res.end();
+      }
+      return;
     }
 
     if (path === '/ext/events' && req.method === 'GET') return extEvents(req, res);

@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>aipass bridge</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --card: #1e293b;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --border: #334155;
+    --accent: #38bdf8;
+    --danger: #ef4444;
+    --success: #22c55e;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f8fafc; --card: #ffffff; --text: #0f172a; --muted: #64748b; --border: #e2e8f0; --accent: #0284c7; }
+  }
+  * { box-sizing: border-box; }
+  body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 0; background: var(--bg); color: var(--text); line-height: 1.5; }
+  .container { max-width: 1000px; margin: 0 auto; padding: 16px; }
+  header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  h1 { font-size: 20px; margin: 0; }
+  .status { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); }
+  .dot { width: 10px; height: 10px; border-radius: 50%; }
+  .up { background: var(--success); }
+  .down { background: var(--danger); }
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+  .tab { padding: 8px 14px; background: var(--card); border: 1px solid var(--border); border-radius: 8px 8px 0 0; cursor: pointer; color: var(--muted); user-select: none; }
+  .tab.active { background: var(--bg); color: var(--text); border-bottom-color: transparent; }
+  .panel { display: none; background: var(--card); border: 1px solid var(--border); border-radius: 0 8px 8px 8px; padding: 16px; }
+  .panel.active { display: block; }
+  label { display: block; margin-bottom: 8px; font-size: 14px; font-weight: 500; }
+  input, textarea, select, button { font: inherit; color: inherit; }
+  input[type="text"], textarea, select { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); margin-bottom: 12px; }
+  textarea { min-height: 120px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  input[type="checkbox"] { width: auto; margin-right: 6px; }
+  button { background: var(--accent); color: white; border: none; border-radius: 6px; padding: 10px 16px; cursor: pointer; font-weight: 500; }
+  button:hover { opacity: .9; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .output { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px; min-height: 200px; white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; overflow-y: auto; max-height: 500px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .col { flex: 1; min-width: 200px; }
+  .hint { color: var(--muted); font-size: 12px; margin-top: -8px; margin-bottom: 12px; }
+  .danger { color: var(--danger); }
+  .success { color: var(--success); }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>aipass bridge</h1>
+    <div class="status"><span id="dot" class="dot down"></span><span id="statusText">checking…</span></div>
+  </header>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="chat">Chat</div>
+    <div class="tab" data-tab="agent">Agent</div>
+    <div class="tab" data-tab="status">Status</div>
+  </div>
+
+  <div id="chat" class="panel active">
+    <label for="chatInput">Message</label>
+    <textarea id="chatInput" placeholder="พิมพ์ข้อความ…"></textarea>
+    <button id="sendChat">ส่งข้อความ</button>
+    <div id="chatOut" class="output" style="margin-top:12px">ready</div>
+    <div id="chatSources" class="hint"></div>
+  </div>
+
+  <div id="agent" class="panel">
+    <label for="task">Task</label>
+    <textarea id="task" placeholder="เช่น สร้างเว็ปขายขนม HTML ธรรมดา"></textarea>
+    <div class="row">
+      <div class="col">
+        <label for="root">Project root</label>
+        <input id="root" type="text" value="." placeholder="path to project">
+        <div class="hint">พาธของโปรเจกต์ที่ agent จะเข้าถึงได้ (เริ่มที่ cwd ถ้าปล่อยว่าง)</div>
+      </div>
+      <div class="col">
+        <label for="agentModel">Model</label>
+        <select id="agentModel"></select>
+      </div>
+    </div>
+    <label><input type="checkbox" id="apply"> Apply changes (เขียนไฟล์จริง)</label>
+    <label><input type="checkbox" id="allowRun"> Allow shell commands</label>
+    <button id="runAgent">Run agent</button>
+    <div class="hint">Dry run by default — files are only written when Apply is checked.</div>
+    <div id="agentOut" class="output" style="margin-top:12px">ready</div>
+  </div>
+
+  <div id="status" class="panel">
+    <pre id="statusOut" class="output" style="min-height:120px">loading…</pre>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+// Tabs
+const panels = document.querySelectorAll('.panel');
+document.querySelectorAll('.tab').forEach((tab) => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t === tab));
+    panels.forEach((p) => p.classList.toggle('active', p.id === tab.dataset.tab));
+  });
+});
+
+async function refreshStatus() {
+  try {
+    const r = await fetch('/status');
+    const s = await r.json();
+    $('dot').className = `dot ${s.extensions > 0 ? 'up' : 'down'}`;
+    $('statusText').textContent = s.extensions > 0 ? `connected (${s.extensions})` : 'no extension connected';
+    $('statusOut').textContent = JSON.stringify(s, null, 2);
+  } catch (err) {
+    $('dot').className = 'dot down';
+    $('statusText').textContent = 'bridge unreachable';
+    $('statusOut').textContent = String(err);
+  }
+}
+
+async function loadModels() {
+  try {
+    const { data } = await fetch('/v1/models').then((r) => r.json());
+    const sel = $('agentModel');
+    sel.innerHTML = '';
+    for (const m of data) {
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = `${m.name || m.id}${m.free_credit ? ' [free]' : ''}`;
+      sel.append(opt);
+    }
+  } catch {}
+}
+
+// Chat
+const chatOut = $('chatOut');
+$('sendChat').addEventListener('click', async () => {
+  const text = $('chatInput').value.trim();
+  if (!text) return;
+  const btn = $('sendChat');
+  btn.disabled = true;
+  chatOut.textContent = 'thinking…\n';
+  try {
+    const res = await fetch('/v1/chat/completions', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: $('agentModel').value || undefined,
+        stream: true,
+        messages: [{ role: 'user', content: $('chatInput').value }],
+      }),
+    });
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    chatOut.textContent = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let cut;
+      while ((cut = buf.indexOf('\n\n')) !== -1) {
+        const frame = buf.slice(0, cut);
+        buf = buf.slice(cut + 2);
+        const data = frame.split('\n').filter((l) => l.startsWith('data:')).map((l) => l.slice(5).trim()).join('');
+        if (!data || data === '[DONE]') continue;
+        try {
+          const evt = JSON.parse(data);
+          const delta = evt.choices?.[0]?.delta ?? {};
+          if (delta.reasoning_content) chatOut.textContent += '\n' + delta.reasoning_content;
+          if (delta.content) chatOut.textContent += delta.content;
+        } catch {}
+      }
+    }
+    chatOut.textContent += '\n';
+  } catch (err) {
+    chatOut.textContent = `error: ${err}`;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// Agent
+const agentOut = $('agentOut');
+$('runAgent').addEventListener('click', async () => {
+  const task = $('task').value.trim();
+  if (!task) { alert('Please enter a task'); return; }
+  const btn = $('runAgent');
+  btn.disabled = true;
+  agentOut.textContent = 'starting…\n';
+  try {
+    const res = await fetch('/ui/agent', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        task,
+        root: $('root').value || '.',
+        apply: $('apply').checked,
+        allowRun: $('allowRun').checked,
+        model: $('agentModel').value,
+      }),
+    });
+    if (!res.ok) {
+      agentOut.textContent = `error: bridge returned ${res.status}`;
+      return;
+    }
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    agentOut.textContent = '';
+    let buf = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let cut;
+      while ((cut = buf.indexOf('\n\n')) !== -1) {
+        const frame = buf.slice(0, cut);
+        buf = buf.slice(cut + 2);
+        const dataLine = frame.split('\n').find((l) => l.startsWith('data:'))?.slice(5).trim();
+        if (dataLine) {
+          try {
+            const evt = JSON.parse(dataLine);
+            if (evt.type === 'data') agentOut.textContent += evt.text;
+            else if (evt.type === 'error') agentOut.textContent += `\n${evt.text}\n`;
+            else if (evt.type === 'end') agentOut.textContent += `\n--- done (exit ${evt.code}) ---\n`;
+          } catch {}
+        }
+      }
+    }
+  } catch (err) {
+    agentOut.textContent = `error: ${err}`;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+refreshStatus();
+setInterval(refreshStatus, 3000);
+loadModels();
+</script>
+</body>
+</html>

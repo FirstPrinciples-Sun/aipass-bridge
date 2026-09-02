@@ -43,6 +43,17 @@ Load the extension: `chrome://extensions` → Developer mode → **Load unpacked
 → select `aipass-bridge/extension`. Then open a `https://de.aipass.net/chat`
 tab and leave it open; the popup should read **connected**.
 
+## Web UI (easiest way to use)
+
+Once the bridge is running, open `http://127.0.0.1:8787` in your browser.
+There are three tabs:
+
+- **Chat** — send a message and see the reply stream live
+- **Agent** — enter a task, pick a project root and model, and run the local file tools without typing CLI flags
+- **Status** — view bridge health, models, and conversations
+
+No terminal commands needed after setup.
+
 ## Set up the coding assistant (one time)
 
 The file-editing agent works best when aipass itself carries the tool protocol,
