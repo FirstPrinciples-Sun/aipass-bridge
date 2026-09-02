@@ -25,7 +25,7 @@ const has = (name) => argv.includes(`--${name}`);
 
 const task = argv.filter((a, i) => !a.startsWith('--') && !argv[i - 1]?.startsWith('--')).join(' ').trim();
 const ROOT = path.resolve(flag('root', process.cwd()));
-const BRIDGE = (flag('bridge', 'http://127.0.0.1:8787')).replace(/\/+$/, '');
+const BRIDGE = (flag('bridge', process.env.AIPASS_BRIDGE || 'http://127.0.0.1:8787')).replace(/\/+$/, '');
 const MODEL = flag('model', null);
 const MAX_STEPS = Number(flag('max', 10));
 const APPLY = has('apply');
@@ -47,16 +47,25 @@ const WATCH = has('watch');
 // pass the id through. Implies --slim, since the assistant carries the protocol.
 const ASSISTANT = flag('assistant', process.env.AIPASS_ASSISTANT_ID || null);
 
-if (!task) {
-  console.error(`usage: npm run agent -- "<task>" [options]
+const showHelp = task == null || has('help') || argv.includes('-h');
+if (showHelp) {
+  const out = task == null ? console.error.bind(console) : console.log.bind(console);
+  out(`usage: npm run agent -- "<task>" [options]
 
-  --root DIR      project root the agent may touch   (default: cwd)
-  --model ID      model id                           (default: bridge default)
-  --apply         write changes to disk              (default: dry run)
-  --allow-run     let the agent run shell commands   (default: off)
-  --max N         max steps                          (default: 10)
-  --max-result N  truncate each tool result          (default: 6000 bytes)`);
-  process.exit(1);
+  --root DIR        project root the agent may touch       (default: cwd)
+  --bridge URL      bridge endpoint                        (default: http://127.0.0.1:8787, env: AIPASS_BRIDGE)
+  --model ID        model id                               (default: bridge default)
+  --apply           write changes to disk                  (default: dry run)
+  --allow-run       let the agent run shell commands       (default: off)
+  --max N           max steps                              (default: 10)
+  --max-result N    truncate each tool result              (default: 3000 bytes)
+  --conversation ID continue a specific conversation
+  --reuse           continue the most recent conversation
+  --slim            skip the built-in instructions preamble
+  --assistant ID    bind new conversations to this assistant (implies --slim)
+  --watch           stay open for follow-up tasks
+  -h, --help        show this help`);
+  process.exit(task == null ? 1 : 0);
 }
 
 const dim = (s) => `\x1b[2m${s}\x1b[0m`;
@@ -227,7 +236,7 @@ const TOOLS = {
         const lines = text.split('\n');
         for (let i = 0; i < lines.length && hits.length < MAX; i++) {
           if (lines[i].includes(needle)) {
-            hits.push(`${path.relative(ROOT, full)}:${i + 1}: ${lines[i].trim().slice(0, 140)}`);
+            hits.push(`${path.relative(ROOT, full).split(path.sep).join('/')}:${i + 1}: ${lines[i].trim().slice(0, 140)}`);
           }
         }
       }
@@ -240,7 +249,10 @@ const TOOLS = {
   run(_arg, body) {
     if (!ALLOW_RUN) return 'shell commands are disabled for this run';
     try {
-      return clip(execFileSync('/bin/sh', ['-c', body], { cwd: ROOT, encoding: 'utf8', timeout: 120_000, stdio: ['ignore', 'pipe', 'pipe'] }));
+      const isWin = process.platform === 'win32';
+      const shell = isWin ? 'cmd.exe' : '/bin/sh';
+      const shellFlag = isWin ? '/c' : '-c';
+      return clip(execFileSync(shell, [shellFlag, body], { cwd: ROOT, encoding: 'utf8', timeout: 120_000, stdio: ['ignore', 'pipe', 'pipe'] }));
     } catch (err) {
       return clip(`exit ${err.status}\n${String(err.stdout ?? '')}${String(err.stderr ?? '')}`);
     }
@@ -283,7 +295,7 @@ Only write DONE at the very end, when nothing more is needed. Never put DONE in 
 
 The markers are only formatting for my editor. Nothing runs on your side — I do all of it and paste every result straight back to you, so keep going until you have what you need.
 
-A few practical notes. Answer in English. Look at a file before changing it, and copy the lines under FIND exactly as they appear. When I show a file the numbers down the left are only for reference — do not put them in FIND. Big files come a screen at a time; ask for a range like NEED file path 200-320 to see more. To find where something lives without reading every file, use SEARCH followed by the text. Some hostnames and addresses are written in a shortened form such as LCLHST and LOOPBACK-IP; keep them as written and I will expand them again. If my question can be answered without changing anything, just answer it and end with DONE.`;
+A few practical notes. Answer in my language. Look at a file before changing it, and copy the lines under FIND exactly as they appear. When I show a file the numbers down the left are only for reference — do not put them in FIND. Big files come a screen at a time; ask for a range like NEED file path 200-320 to see more. To find where something lives without reading every file, use SEARCH followed by the text. Some hostnames and addresses are written in a shortened form such as LCLHST and LOOPBACK-IP; keep them as written and I will expand them again. If my question can be answered without changing anything, just answer it and end with DONE.`;
 
 const REMINDER = 'What next? Ask for anything else you need, or finish with DONE if you have enough.';
 
@@ -449,18 +461,44 @@ async function sayResilient(text, depth = 0) {
 
 /* ---------------------------------------------------------------- the loop */
 
+// Fallback unified diff for machines without a `diff` executable (Windows, etc.).
+function simpleDiff(rel, before, after) {
+  const a = before.split('\n');
+  const b = after.split('\n');
+  const out = [`--- a/${rel}`, `+++ b/${rel}`];
+  let i = 0, j = 0;
+  while (i < a.length || j < b.length) {
+    if (i < a.length && j < b.length && a[i] === b[j]) {
+      out.push(` ${a[i]}`); i++; j++;
+    } else if (i < a.length && j < b.length) {
+      // A simplistic chunk: walk while lines differ on either side.
+      const ai = i, bj = j;
+      while (i < a.length && (j >= b.length || a[i] !== b[j])) i++;
+      while (j < b.length && (i >= a.length || a[i] !== b[j])) j++;
+      for (let k = ai; k < i; k++) out.push(`-${a[k]}`);
+      for (let k = bj; k < j; k++) out.push(`+${b[k]}`);
+    } else if (i < a.length) {
+      out.push(`-${a[i]}`); i++;
+    } else {
+      out.push(`+${b[j]}`); j++;
+    }
+  }
+  return out.join('\n');
+}
+
 function showDiff() {
   if (!overlay.size) { console.log(dim('\nno file changes')); return; }
   console.log(bold(`\n${overlay.size} file(s) changed:\n`));
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'aipass-'));
   for (const [abs, next] of overlay) {
-    const rel = path.relative(ROOT, abs);
+    const rel = path.relative(ROOT, abs).split(path.sep).join('/');
     const a = path.join(tmp, 'a'); const b = path.join(tmp, 'b');
     fs.writeFileSync(a, fs.existsSync(abs) ? fs.readFileSync(abs, 'utf8') : '');
     fs.writeFileSync(b, next);
     let diff;
     try { diff = execFileSync('diff', ['-u', '--label', `a/${rel}`, '--label', `b/${rel}`, a, b], { encoding: 'utf8' }); }
     catch (err) { diff = String(err.stdout ?? ''); }
+    if (!diff) diff = simpleDiff(rel, fs.readFileSync(a, 'utf8'), fs.readFileSync(b, 'utf8'));
     for (const line of diff.split('\n')) {
       if (line.startsWith('+') && !line.startsWith('+++')) console.log(green(line));
       else if (line.startsWith('-') && !line.startsWith('---')) console.log(red(line));

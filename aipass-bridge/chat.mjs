@@ -12,11 +12,27 @@ const flag = (name, fallback = null) => {
   const i = argv.indexOf(`--${name}`);
   return i === -1 ? fallback : argv[i + 1];
 };
-const BRIDGE = (flag('bridge', 'http://127.0.0.1:8787')).replace(/\/+$/, '');
+const BRIDGE = (flag('bridge', process.env.AIPASS_BRIDGE || 'http://127.0.0.1:8787')).replace(/\/+$/, '');
 const CONVERSATION = flag('conversation', null);
 const NEW = argv.includes('--new');
 let model = flag('model', null);
 const question = argv.filter((a, i) => !a.startsWith('--') && !argv[i - 1]?.startsWith('--')).join(' ').trim();
+
+if (argv.includes('--help') || argv.includes('-h')) {
+  console.log(`usage: npm run chat [-- "question"] [options]
+
+  --bridge URL       bridge endpoint              (default: http://127.0.0.1:8787, env: AIPASS_BRIDGE)
+  --model ID         model id
+  --conversation ID  continue a specific conversation
+  --new              start a new conversation
+  -h, --help         show this help
+
+Interactive commands:
+  /models            list available models
+  /model <id>        switch default model
+  exit / quit / Ctrl+C  quit`);
+  process.exit(0);
+}
 
 const dim = (s) => `\x1b[2m${s}\x1b[0m`;
 const cyan = (s) => `\x1b[36m${s}\x1b[0m`;
@@ -84,37 +100,49 @@ async function ask(text) {
   stdout.write(wrote ? '\n' : dim('\n(no reply)\n'));
 }
 
+async function interactive() {
+  console.log(bold('aipass') + dim(`  model ${model}  ·  conversation ${status.conversation ?? 'resolves on first message'}`));
+  console.log(dim('/model <id> to switch  ·  /models to list  ·  exit / quit / Ctrl+C\n'));
+
+  const rl = readline.createInterface({ input: stdin, output: stdout });
+  for (;;) {
+    let line;
+    try { line = (await rl.question(bold('> '))).trim(); }
+    catch { break; } // Ctrl+C / Ctrl+D
+    if (!line) continue;
+    if (line === 'exit' || line === 'quit') break;
+
+    if (line === '/models') {
+      const { data } = await fetch(`${BRIDGE}/v1/models`).then((r) => r.json());
+      for (const m of data) console.log(`  ${m.id.padEnd(38)} ${m.name}${m.free_credit ? dim('  [free]') : ''}`);
+      continue;
+    }
+    if (line.startsWith('/model ')) {
+      model = line.slice(7).trim();
+      await fetch(`${BRIDGE}/config`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ defaultModel: model }),
+      }).catch(() => {});
+      console.log(dim(`  model ${model}`));
+      continue;
+    }
+
+    await ask(line);
+    console.log();
+  }
+  rl.close();
+}
+
 if (question) {
   await ask(question);
-  process.exit(0);
+} else if (!stdin.isTTY) {
+  // Support `echo "question" | npm run chat` for non-ASCII text and scripting.
+  let piped = '';
+  stdin.setEncoding('utf8');
+  for await (const chunk of stdin) piped += chunk;
+  const pipedQuestion = piped.trim();
+  if (pipedQuestion) await ask(pipedQuestion);
+  else await interactive();
+} else {
+  await interactive();
 }
-
-console.log(bold('aipass') + dim(`  model ${model}  ·  conversation ${status.conversation ?? 'resolves on first message'}`));
-console.log(dim('/model <id> to switch  ·  /models to list  ·  Ctrl+C to quit\n'));
-
-const rl = readline.createInterface({ input: stdin, output: stdout });
-for (;;) {
-  let line;
-  try { line = (await rl.question(bold('> '))).trim(); }
-  catch { break; } // Ctrl+C / Ctrl+D
-  if (!line) continue;
-
-  if (line === '/models') {
-    const { data } = await fetch(`${BRIDGE}/v1/models`).then((r) => r.json());
-    for (const m of data) console.log(`  ${m.id.padEnd(38)} ${m.name}${m.free_credit ? dim('  [free]') : ''}`);
-    continue;
-  }
-  if (line.startsWith('/model ')) {
-    model = line.slice(7).trim();
-    await fetch(`${BRIDGE}/config`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ defaultModel: model }),
-    }).catch(() => {});
-    console.log(dim(`  model ${model}`));
-    continue;
-  }
-
-  await ask(line);
-  console.log();
-}
-rl.close();

@@ -92,10 +92,11 @@ wire the bridge to create bound conversations automatically — also below.
 ```bash
 npm run chat                          # interactive
 npm run chat -- "ช่วยสรุปข่าว AI วันนี้"   # one-shot
+npm run chat < question.txt           # pipe a question (great for non-ASCII)
 ```
 
 In interactive mode: `/models` lists what's available, `/model <id>` switches,
-Ctrl+C quits.
+type `exit` or `quit` (or Ctrl+C) to quit.
 
 | script | |
 |---|---|
@@ -344,7 +345,9 @@ most recent.
 
 | env | default | |
 |---|---|---|
-| `AIPASS_PORT` | `8787` | |
+| `AIPASS_BRIDGE` | `http://127.0.0.1:8787` | bridge URL for `chat`, `agent`, and `list` |
+| `AIPASS_PORT` | `8787` | port the bridge listens on |
+| `AIPASS_HOST` | `127.0.0.1` | host the bridge binds to |
 | `AIPASS_MODEL` | `gemini-3.1-flash-lite` | used when no model is given |
 | `AIPASS_MODELS` | two known ids | fallback list when no extension is attached |
 | `AIPASS_MODEL_FILTER` | `chat` | `all` keeps image/video/audio models |
@@ -362,7 +365,7 @@ chat. Only the last user message is forwarded.
 npm test
 ```
 
-37 tests, no dependencies, about 2 seconds. `test/harness.mjs` runs the real
+45 tests, no dependencies, about 13 seconds. `test/harness.mjs` runs the real
 bridge as a subprocess and a scriptable stand-in for the extension, so tests
 drive the actual HTTP surface and the real CLIs rather than mocks of them.
 
